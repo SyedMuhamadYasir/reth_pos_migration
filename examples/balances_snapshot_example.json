@@ -1,0 +1,23 @@
+{
+  "source_rpc": "http://old-reth-node:8545",
+  "chain_id": 4242,
+  "block": {
+    "number": 120000,
+    "tag": "0x1d4c0",
+    "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "resolved_from": "explicit"
+  },
+  "address_counts": {
+    "input_total": 3,
+    "unique_valid": 2,
+    "duplicates_skipped": 1,
+    "succeeded": 2,
+    "failed": 0
+  },
+  "balances": {
+    "0x1111111111111111111111111111111111111111": "1000000000000000000",
+    "0x2222222222222222222222222222222222222222": "250000000000000000"
+  },
+  "failed_addresses": {},
+  "timestamp_unix": 1700000000
+}

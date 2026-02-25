@@ -8,9 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from web3 import Web3
-from web3.middleware import geth_poa_middleware
-
 
 def load_snapshot(path: Path) -> dict[str, Any]:
     try:
@@ -28,6 +25,17 @@ def load_snapshot(path: Path) -> dict[str, Any]:
         raise RuntimeError("Snapshot JSON missing 'balances' object.")
 
     return snapshot
+
+
+def import_web3() -> tuple[Any, Any]:
+    try:
+        from web3 import Web3
+        from web3.middleware import geth_poa_middleware
+    except ImportError as exc:
+        raise RuntimeError(
+            "web3 is not installed. Install dependencies with: pip install -r requirements.txt"
+        ) from exc
+    return Web3, geth_poa_middleware
 
 
 def main() -> None:
@@ -72,6 +80,12 @@ def main() -> None:
         sys.exit(1)
     if args.max_report < 0:
         print("ERROR: --max-report must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        Web3, geth_poa_middleware = import_web3()
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
     target_rpc = os.getenv("TARGET_RPC_URL")

@@ -10,10 +10,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from web3 import Web3
-from web3.exceptions import TimeExhausted, TransactionNotFound
-from web3.middleware import geth_poa_middleware
-
 
 def load_snapshot(path: Path) -> dict[str, Any]:
     try:
@@ -83,12 +79,26 @@ def validate_and_get_env() -> tuple[str, str, int]:
     return target_rpc, admin_priv, chain_id
 
 
+def import_web3() -> tuple[Any, type[Exception], type[Exception], Any]:
+    try:
+        from web3 import Web3
+        from web3.exceptions import TimeExhausted, TransactionNotFound
+        from web3.middleware import geth_poa_middleware
+    except ImportError as exc:
+        raise RuntimeError(
+            "web3 is not installed. Install dependencies with: pip install -r requirements.txt"
+        ) from exc
+    return Web3, TimeExhausted, TransactionNotFound, geth_poa_middleware
+
+
 def reconcile_in_flight_tx(
-    w3: Web3,
+    w3: Any,
     state_file: Path,
     state: dict[str, Any],
     receipt_timeout_seconds: int,
     poll_interval_seconds: float,
+    transaction_not_found_exc: type[Exception],
+    time_exhausted_exc: type[Exception],
 ) -> dict[str, Any]:
     in_flight = state.get("in_flight")
     if not isinstance(in_flight, dict):
@@ -102,22 +112,20 @@ def reconcile_in_flight_tx(
         )
 
     print(f"Reconciling in-flight tx: {tx_hash_hex}")
-    tx_hash = Web3.to_bytes(hexstr=tx_hash_hex)
-
     receipt = None
     try:
-        receipt = w3.eth.get_transaction_receipt(tx_hash)
-    except TransactionNotFound:
+        receipt = w3.eth.get_transaction_receipt(tx_hash_hex)
+    except transaction_not_found_exc:
         pass
 
     if receipt is None:
         try:
             receipt = w3.eth.wait_for_transaction_receipt(
-                tx_hash,
+                tx_hash_hex,
                 timeout=receipt_timeout_seconds,
                 poll_latency=poll_interval_seconds,
             )
-        except TimeExhausted as exc:
+        except time_exhausted_exc as exc:
             raise RuntimeError(
                 "In-flight tx still pending or missing. Re-run later, or reset state only after "
                 "verifying tx status manually."
@@ -242,6 +250,12 @@ def main() -> None:
         sys.exit(1)
 
     try:
+        Web3, TimeExhausted, TransactionNotFound, geth_poa_middleware = import_web3()
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
         target_rpc, admin_priv, expected_chain_id = validate_and_get_env()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -331,6 +345,8 @@ def main() -> None:
                 state,
                 args.receipt_timeout_seconds,
                 args.poll_interval_seconds,
+                TransactionNotFound,
+                TimeExhausted,
             )
         except RuntimeError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)

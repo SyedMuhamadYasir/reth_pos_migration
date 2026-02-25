@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.log
+
+# virtualenvs
+.venv/
+venv/
+env/
+
+# editor / IDE junk
+.idea/
+.vscode/
+
+# migration runtime artifacts
+migration_state.json
+balances_snapshot.json

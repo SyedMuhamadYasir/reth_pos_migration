@@ -1,0 +1,7 @@
+# Example migration address list (one address per line).
+# Lines starting with "#" are ignored.
+# Use checksummed or lowercase 0x-prefixed 20-byte addresses.
+
+0x1111111111111111111111111111111111111111
+0x2222222222222222222222222222222222222222
+0x3333333333333333333333333333333333333333
