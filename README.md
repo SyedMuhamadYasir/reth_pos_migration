@@ -1,59 +1,81 @@
-# Reth PoS Balance Migration Toolkit
+<div align="center">
 
-Migration-grade toolkit for moving account balances from an old Reth-based private network to a new Reth network.
+# 🚀 Reth PoS Balance Migration Toolkit
 
-## Overview
+Migration-grade tooling for moving account balances from an old Reth private chain to a new one.
 
-This repository snapshots balances from an old chain at a fixed block, then replays those balances onto a new chain that can use a different `chainId`. The process preserves account addresses and final balances while intentionally discarding old chain history and transaction lineage.
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Web3](https://img.shields.io/badge/web3-6.x-2C5BB4)
+![Mode](https://img.shields.io/badge/Mode-Offline%20Snapshot%20%2B%20Controlled%20Replay-0A7E8C)
+![Safety](https://img.shields.io/badge/Safety-Migration--Grade-success)
 
-## Repository Structure
+</div>
 
+> [!IMPORTANT]
+> This toolkit is designed for **balance migration only**.
+> It preserves addresses and balances, not historical transactions.
+
+## ✨ Why This Exists
+When rebuilding a private PoS network, you often want a clean chain with a new `chainId` while preserving user balances. This repo gives you a practical, auditable workflow:
+- Snapshot balances at one fixed source block.
+- Replay balances from an admin wallet on the new chain.
+- Verify final balances match exactly.
+- Analyze distribution and concentration offline for reporting.
+
+## 🧭 End-to-End Flow
+```mermaid
+flowchart LR
+    A["Old Reth Chain"] --> B["scripts/snapshot_balances.py"]
+    B --> C["balances_snapshot.json"]
+    C --> D["scripts/migrate_balances.py"]
+    D --> E["New Reth Chain"]
+    C --> F["scripts/verify_balances.py"]
+    C --> G["scripts/snapshot_stats.py"]
+```
+
+## 📦 Repository Layout
 ```text
 reth_pos_migration/
-  README.md                        # usage, workflow, and safety notes
-  requirements.txt                 # Python dependencies
-  .gitignore                       # local/runtime files to keep out of git
+  README.md
+  requirements.txt
+  .gitignore
 
   scripts/
     snapshot_balances.py           # deterministic snapshot from old chain
     migrate_balances.py            # replay balances to new chain from admin wallet
     verify_balances.py             # verify new chain balances match snapshot
     migration_helper.py            # utility: sum/check snapshot totals
-    snapshot_stats.py              # offline analytics and report export for snapshots
+    snapshot_stats.py              # offline analytics + optional CSV/LaTeX exports
 
   examples/
-    addresses_example.txt          # sample addresses input format
-    balances_snapshot_example.json # sample snapshot output structure
+    addresses_example.txt
+    balances_snapshot_example.json
 
   genesis/
-    README.md                      # notes about storing old/new genesis files
+    README.md                      # genesis file guidance (old/new)
 
   config/
-    admin_skip_addresses_example.txt # example admin/system addresses to exclude
+    admin_skip_addresses_example.txt # sample admin/system addresses to exclude
 ```
 
-## Requirements
-
-- Python 3.10+
+## ⚙️ Requirements
+- Python `3.10+`
 - Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Environment Variables
-
+## 🔐 Environment Variables
 ```bash
-export SOURCE_RPC_URL="http://old-node:8545"   # for snapshot_balances.py
-export TARGET_RPC_URL="http://new-node:8545"   # for migrate/verify scripts
-export ADMIN_PRIVATE_KEY="0x..."               # admin wallet on the NEW chain
-export CHAIN_ID="4567"                         # new chainId in decimal
+export SOURCE_RPC_URL="http://old-node:8545"   # snapshot_balances.py
+export TARGET_RPC_URL="http://new-node:8545"   # migrate_balances.py / verify_balances.py
+export ADMIN_PRIVATE_KEY="0x..."               # admin wallet on NEW chain
+export CHAIN_ID="4567"                         # NEW chainId (decimal)
 ```
 
-## High-Level Workflow
-
-1. Snapshot balances from old chain at a fixed block.
-
+## 🚀 Quick Start
+### 1) Snapshot balances from old chain
 ```bash
 python scripts/snapshot_balances.py \
   --addresses-file examples/addresses_example.txt \
@@ -61,15 +83,14 @@ python scripts/snapshot_balances.py \
   --block 120000
 ```
 
-If you omit `--block`, the script resolves a single fixed snapshot block from fallback tags (`finalized,safe,latest`) and still snapshots at that pinned block number.
+If `--block` is omitted, the script resolves one fixed block from fallback tags (`finalized,safe,latest`) and still snapshots consistently at that pinned block.
 
-2. Prepare and start the new Reth network.
-- Build `genesis_new.json` with the new `chainId`.
-- Fund the admin wallet in genesis `alloc`.
-- Start validators/execution clients and confirm RPC is healthy.
+### 2) Prepare and start new chain
+- Build `genesis_new.json` with your new `chainId`.
+- Fund migration admin account in genesis `alloc`.
+- Start execution/consensus nodes and validate RPC health.
 
-3. Replay balances onto new chain (dry-run first, then live run).
-
+### 3) Replay balances (dry-run first)
 ```bash
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
@@ -80,21 +101,24 @@ python scripts/migrate_balances.py \
   --state-file migration_state.json
 ```
 
-4. Verify migrated balances.
-
+### 4) Verify migrated balances
 ```bash
 python scripts/verify_balances.py \
   --snapshot balances_snapshot.json
 ```
 
-### Optional: Exclude Admin/System Addresses
+## 🛡️ Exclude Admin/System Addresses
+Use `--exclude-addresses-file` when certain addresses are out-of-scope for replay (for example: admin reserves, system contracts, genesis-funded alloc buckets).
 
-If you have admin wallets, system contracts, or other non-user accounts that are handled separately (for example via genesis `alloc`), provide an exclude file to keep them out of snapshot, migration, and verification.
+Address file format:
+- one address per line
+- `#` comment lines ignored
+- blank lines ignored
+- address must be valid `0x` 20-byte hex
 
-Use the sample format in `config/admin_skip_addresses_example.txt` (one address per line, `#` comments allowed).
+Sample file: `config/admin_skip_addresses_example.txt`
 
 Snapshot with exclusions:
-
 ```bash
 python scripts/snapshot_balances.py \
   --addresses-file examples/addresses_example.txt \
@@ -104,7 +128,6 @@ python scripts/snapshot_balances.py \
 ```
 
 Migration with exclusions:
-
 ```bash
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
@@ -113,7 +136,6 @@ python scripts/migrate_balances.py \
 ```
 
 Verification with exclusions:
-
 ```bash
 python scripts/verify_balances.py \
   --snapshot balances_snapshot.json \
@@ -121,16 +143,38 @@ python scripts/verify_balances.py \
 ```
 
 Semantics:
-- `snapshot_balances.py` removes excluded addresses from the generated snapshot.
-- `migrate_balances.py` skips excluded addresses and reports the skipped count.
-- `verify_balances.py` skips excluded addresses and reports the skipped count.
+- `snapshot_balances.py`: excluded addresses are removed from output snapshot and counted in `address_counts.excluded`.
+- `migrate_balances.py`: excluded addresses are skipped (no tx sent), counted in summary.
+- `verify_balances.py`: excluded addresses are skipped in validation, counted in summary.
 
-If the exclude file changes between migration runs, use `--reset-state` on `migrate_balances.py` to avoid confusion with an existing state file.
+> [!TIP]
+> If you change the exclude file between migration runs, use `--reset-state` in `migrate_balances.py`.
 
-## Safety and Correctness Notes
+## 📊 Offline Analytics and Reporting
+`snapshot_stats.py` is fully offline and never talks to RPC:
 
-- `snapshot_balances.py` resolves and pins one exact block with `eth_getBlockByNumber`, then queries all balances against that fixed block tag.
-- RPC fetch failures are recorded in `failed_addresses` and cause a non-zero exit by default unless `--allow-partial` is explicitly used.
-- `migrate_balances.py` is resumable via a state file and uses in-flight transaction reconciliation to reduce replay risk.
-- The migration scripts never print the admin private key.
-- Addresses listed in `--exclude-addresses-file` are never migrated or verified and are treated as out-of-scope for transfer replay (for example, they should be pre-set via genesis `alloc`).
+```bash
+python scripts/snapshot_stats.py \
+  --snapshot balances_snapshot.json \
+  --thresholds 1,10,100,1000 \
+  --csv-out stats/threshold_stats.csv \
+  --tex-out stats/snapshot_stats.tex
+```
+
+Outputs:
+- human-readable stdout report
+- optional threshold CSV (`--csv-out`)
+- optional LaTeX fragment for papers (`--tex-out`, via `\input{...}`)
+
+## ✅ Safety and Correctness Notes
+- Snapshot uses a fixed resolved block (`eth_getBlockByNumber`) to avoid moving-head inconsistency.
+- RPC failures are recorded in `failed_addresses`; default behavior is non-zero exit unless `--allow-partial`.
+- Migration is resumable with state tracking and in-flight reconciliation.
+- Admin private key is never printed.
+- Excluded addresses are never migrated/verified and should be handled separately (for example via genesis `alloc`).
+
+## 🧪 Utility Command
+Quickly compute total required balance from snapshot:
+```bash
+python scripts/migration_helper.py balances_snapshot.json
+```
