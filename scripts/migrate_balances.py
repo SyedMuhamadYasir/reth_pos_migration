@@ -221,6 +221,12 @@ def main() -> None:
         help="Skip addresses whose expected snapshot balance is below this value. Default: 0",
     )
     parser.add_argument(
+        "--max-balance-wei",
+        type=int,
+        default=None,
+        help="If set, skip addresses whose expected snapshot balance is above this value (in wei).",
+    )
+    parser.add_argument(
         "--receipt-timeout-seconds",
         type=int,
         default=180,
@@ -280,6 +286,15 @@ def main() -> None:
 
     if args.min_balance_wei < 0:
         print("ERROR: --min-balance-wei must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.max_balance_wei is not None and args.max_balance_wei < 0:
+        print("ERROR: --max-balance-wei must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.max_balance_wei is not None and args.max_balance_wei < args.min_balance_wei:
+        print(
+            "ERROR: --max-balance-wei must be >= --min-balance-wei.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if args.receipt_timeout_seconds <= 0:
         print("ERROR: --receipt-timeout-seconds must be > 0.", file=sys.stderr)
@@ -424,6 +439,7 @@ def main() -> None:
 
     sent_count = 0
     skipped_threshold = 0
+    skipped_above_max = 0
     skipped_already_funded = 0
     skipped_excluded = 0
 
@@ -461,6 +477,22 @@ def main() -> None:
 
         if expected < args.min_balance_wei:
             skipped_threshold += 1
+            if args.progress_every and (idx + 1) % args.progress_every == 0:
+                print(f"  processed {idx + 1}/{total} addresses...")
+            if not args.dry_run:
+                state = {
+                    "snapshot_fingerprint": snap_fingerprint,
+                    "snapshot_path": str(snapshot_path.resolve()),
+                    "next_index": idx + 1,
+                    "next_nonce": nonce,
+                    "last_processed_address": addr,
+                    "last_updated": int(time.time()),
+                }
+                save_state(state_file, state)
+            continue
+
+        if args.max_balance_wei is not None and expected > args.max_balance_wei:
+            skipped_above_max += 1
             if args.progress_every and (idx + 1) % args.progress_every == 0:
                 print(f"  processed {idx + 1}/{total} addresses...")
             if not args.dry_run:
@@ -603,6 +635,7 @@ def main() -> None:
     print(f"Addresses total: {total}")
     print(f"Sent tx count: {sent_count}")
     print(f"Skipped (below threshold): {skipped_threshold}")
+    print(f"Skipped (above max-balance-wei): {skipped_above_max}")
     print(f"Skipped (already funded): {skipped_already_funded}")
     print(f"Skipped (excluded-addresses-file): {skipped_excluded}")
     if args.dry_run:

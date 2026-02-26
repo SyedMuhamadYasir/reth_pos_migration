@@ -95,6 +95,12 @@ def main() -> None:
         help="Skip addresses with expected snapshot balance below this value. Default: 0",
     )
     parser.add_argument(
+        "--max-balance-wei",
+        type=int,
+        default=None,
+        help="If set, skip addresses whose expected snapshot balance is above this value (in wei).",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=100,
@@ -122,6 +128,15 @@ def main() -> None:
 
     if args.min_balance_wei < 0:
         print("ERROR: --min-balance-wei must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.max_balance_wei is not None and args.max_balance_wei < 0:
+        print("ERROR: --max-balance-wei must be >= 0.", file=sys.stderr)
+        sys.exit(1)
+    if args.max_balance_wei is not None and args.max_balance_wei < args.min_balance_wei:
+        print(
+            "ERROR: --max-balance-wei must be >= --min-balance-wei.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if args.progress_every < 0:
         print("ERROR: --progress-every must be >= 0.", file=sys.stderr)
@@ -182,6 +197,7 @@ def main() -> None:
     total = len(balances)
     checked = 0
     skipped_threshold = 0
+    skipped_above_max = 0
     skipped_excluded = 0
     mismatches: list[tuple[str, int, int]] = []
     errors: list[tuple[str, str]] = []
@@ -207,6 +223,12 @@ def main() -> None:
                 print(f"  checked {idx}/{total} addresses...")
             continue
 
+        if args.max_balance_wei is not None and expected > args.max_balance_wei:
+            skipped_above_max += 1
+            if args.progress_every and idx % args.progress_every == 0:
+                print(f"  checked {idx}/{total} addresses...")
+            continue
+
         try:
             got = int(w3.eth.get_balance(addr))
         except Exception as exc:
@@ -224,6 +246,7 @@ def main() -> None:
     print(f"Total addresses in snapshot: {total}")
     print(f"Checked addresses: {checked}")
     print(f"Skipped (below threshold): {skipped_threshold}")
+    print(f"Skipped (above max-balance-wei): {skipped_above_max}")
     print(f"Skipped (excluded-addresses-file): {skipped_excluded}")
     print(f"Mismatches: {len(mismatches)}")
     print(f"Errors: {len(errors)}")
