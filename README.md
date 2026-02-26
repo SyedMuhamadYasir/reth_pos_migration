@@ -29,8 +29,11 @@ flowchart LR
     B --> C["balances_snapshot.json"]
     C --> D["scripts/migrate_balances.py"]
     D --> E["New Reth Chain"]
+    D --> H["migration_tx_log.csv"]
     C --> F["scripts/verify_balances.py"]
     C --> G["scripts/snapshot_stats.py"]
+    C --> I["scripts/migration_report.py"]
+    H --> I
 ```
 
 ## 📦 Repository Layout
@@ -44,6 +47,7 @@ reth_pos_migration/
     snapshot_balances.py           # deterministic snapshot from old chain
     migrate_balances.py            # replay balances to new chain from admin wallet
     verify_balances.py             # verify new chain balances match snapshot
+    migration_report.py            # offline summary + LaTeX report from migration tx log
     migration_helper.py            # utility: sum/check snapshot totals
     snapshot_stats.py              # offline analytics + optional CSV/LaTeX exports
 
@@ -94,11 +98,13 @@ If `--block` is omitted, the script resolves one fixed block from fallback tags 
 ```bash
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
+  --tx-log-csv logs/migration_tx_log.csv \
   --dry-run
 
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
-  --state-file migration_state.json
+  --state-file migration_state.json \
+  --tx-log-csv logs/migration_tx_log.csv
 ```
 
 ### 4) Verify migrated balances
@@ -106,6 +112,21 @@ python scripts/migrate_balances.py \
 python scripts/verify_balances.py \
   --snapshot balances_snapshot.json
 ```
+
+## 🧾 Migration Audit Logging
+Use `--tx-log-csv` with `migrate_balances.py` to append a machine-readable per-transaction audit trail.
+
+Each row captures snapshot metadata and tx execution details, including recipient address, expected/current balances, delta sent, nonce, tx hash, tx block number, gas fields, and status.
+
+Example:
+```bash
+python scripts/migrate_balances.py \
+  --snapshot balances_snapshot.json \
+  --state-file migration_state.json \
+  --tx-log-csv logs/migration_tx_log.csv
+```
+
+The CSV is append-safe for resumable runs: existing files are reused, and header duplication is avoided.
 
 ## 🛡️ Exclude Admin/System Addresses
 Use `--exclude-addresses-file` when certain addresses are out-of-scope for replay (for example: admin reserves, system contracts, genesis-funded alloc buckets).
@@ -165,6 +186,22 @@ Outputs:
 - human-readable stdout report
 - optional threshold CSV (`--csv-out`)
 - optional LaTeX fragment for papers (`--tex-out`, via `\input{...}`)
+
+## 📝 Migration Report Generator
+`migration_report.py` is an offline consistency and reporting tool for the migration phase.
+
+```bash
+python scripts/migration_report.py \
+  --snapshot balances_snapshot.json \
+  --tx-log-csv logs/migration_tx_log.csv \
+  --tex-out stats/migration_report.tex
+```
+
+It:
+- validates internal consistency between snapshot metadata and tx log rows
+- checks per-row invariants (`current_balance_before_wei + delta_sent_wei == expected_balance_wei`)
+- prints a concise summary to stdout
+- can emit a LaTeX fragment for paper/report workflows
 
 ## ✅ Safety and Correctness Notes
 - Snapshot uses a fixed resolved block (`eth_getBlockByNumber`) to avoid moving-head inconsistency.

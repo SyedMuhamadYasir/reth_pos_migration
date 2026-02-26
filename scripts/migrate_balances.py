@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -9,6 +10,27 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+
+
+TX_LOG_HEADER = [
+    "snapshot_block_number",
+    "snapshot_block_tag",
+    "snapshot_block_hash",
+    "snapshot_chain_id",
+    "index",
+    "address",
+    "expected_balance_wei",
+    "current_balance_before_wei",
+    "delta_sent_wei",
+    "admin_address",
+    "admin_nonce",
+    "tx_hash",
+    "tx_block_number",
+    "gas_price_wei",
+    "gas_limit",
+    "gas_used",
+    "tx_status",
+]
 
 
 def load_snapshot(path: Path) -> dict[str, Any]:
@@ -91,6 +113,19 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
     tmp_path.replace(path)
+
+
+def append_tx_log_row(csv_path: Path, header: list[str], row: list[Any]) -> None:
+    try:
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        needs_header = (not csv_path.exists()) or csv_path.stat().st_size == 0
+        with csv_path.open("a", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            if needs_header:
+                writer.writerow(header)
+            writer.writerow(row)
+    except OSError as exc:
+        raise RuntimeError(f"Could not append tx log CSV '{csv_path}': {exc}") from exc
 
 
 def parse_int(value: str, name: str) -> int:
@@ -282,6 +317,10 @@ def main() -> None:
         action="store_true",
         help="Do not send txs; print planned operations only.",
     )
+    parser.add_argument(
+        "--tx-log-csv",
+        help="Optional CSV path for logging each successfully confirmed migration tx.",
+    )
     args = parser.parse_args()
 
     if args.min_balance_wei < 0:
@@ -326,6 +365,7 @@ def main() -> None:
 
     snapshot_path = Path(args.snapshot)
     state_file = Path(args.state_file)
+    tx_log_csv_path = Path(args.tx_log_csv) if args.tx_log_csv else None
 
     try:
         snapshot = load_snapshot(snapshot_path)
@@ -352,6 +392,11 @@ def main() -> None:
         sys.exit(2)
 
     balances: dict[str, Any] = snapshot["balances"]
+    block_meta = snapshot.get("block") if isinstance(snapshot.get("block"), dict) else {}
+    snapshot_block_number = block_meta.get("number", "")
+    snapshot_block_tag = block_meta.get("tag", "")
+    snapshot_block_hash = block_meta.get("hash", "")
+    snapshot_chain_id = snapshot.get("chain_id", "")
     addresses = list(balances.keys())
     total = len(addresses)
     if total == 0:
@@ -613,6 +658,35 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+
+        if tx_log_csv_path is not None:
+            try:
+                append_tx_log_row(
+                    tx_log_csv_path,
+                    TX_LOG_HEADER,
+                    [
+                        snapshot_block_number,
+                        snapshot_block_tag,
+                        snapshot_block_hash,
+                        snapshot_chain_id,
+                        idx,
+                        addr,
+                        expected,
+                        current_balance,
+                        delta,
+                        admin_address,
+                        nonce,
+                        tx_hash_hex,
+                        int(receipt.blockNumber),
+                        gas_price,
+                        args.gas_limit,
+                        int(receipt.gasUsed),
+                        int(receipt.status),
+                    ],
+                )
+            except RuntimeError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                sys.exit(1)
 
         nonce += 1
         sent_count += 1
