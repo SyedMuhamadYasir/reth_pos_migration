@@ -173,6 +173,37 @@ def load_addresses(addresses_file: str) -> tuple[list[str], list[str], int, int]
     return addresses, invalid_lines, duplicates_skipped, input_total
 
 
+def load_exclude_set(path: str) -> set[str]:
+    excluded: set[str] = set()
+    invalid_lines: list[str] = []
+
+    try:
+        with open(path, "r", encoding="utf-8") as file_handle:
+            for line_number, raw_line in enumerate(file_handle, start=1):
+                raw = raw_line.strip()
+                if not raw or raw.startswith("#"):
+                    continue
+                try:
+                    normalized = normalize_address(raw)
+                except ValueError as exc:
+                    invalid_lines.append(f"line {line_number}: {raw} ({exc})")
+                    continue
+                excluded.add(normalized)
+    except OSError as exc:
+        print(f"ERROR: failed to read --exclude-addresses-file '{path}': {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if invalid_lines:
+        print("ERROR: invalid addresses found in --exclude-addresses-file:", file=sys.stderr)
+        for line in invalid_lines[:20]:
+            print(f"  {line}", file=sys.stderr)
+        if len(invalid_lines) > 20:
+            print(f"  ... and {len(invalid_lines) - 20} more invalid lines", file=sys.stderr)
+        sys.exit(1)
+
+    return excluded
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -232,6 +263,13 @@ def main() -> None:
         action="store_true",
         help="Allow writing output and exiting 0 even if some addresses fail.",
     )
+    parser.add_argument(
+        "--exclude-addresses-file",
+        help=(
+            "Optional path to a text file with addresses to exclude from snapshot "
+            "(same format as --addresses-file)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.retries < 1:
@@ -252,6 +290,11 @@ def main() -> None:
         print("ERROR: SOURCE_RPC_URL env var is not set.", file=sys.stderr)
         sys.exit(1)
 
+    if args.exclude_addresses_file:
+        exclude_set = load_exclude_set(args.exclude_addresses_file)
+    else:
+        exclude_set = set()
+
     addresses, invalid_lines, duplicates_skipped, input_total = load_addresses(
         args.addresses_file
     )
@@ -265,6 +308,16 @@ def main() -> None:
     if not addresses:
         print("ERROR: no valid addresses found in --addresses-file.", file=sys.stderr)
         sys.exit(1)
+
+    unique_valid = len(addresses)
+    excluded_by_filter = 0
+    filtered_addresses: list[str] = []
+    for address in addresses:
+        if address in exclude_set:
+            excluded_by_filter += 1
+            continue
+        filtered_addresses.append(address)
+    addresses = filtered_addresses
 
     fallback_tags = [tag.strip() for tag in args.fallback_tags.split(",") if tag.strip()]
     if args.block is None and not fallback_tags:
@@ -299,8 +352,8 @@ def main() -> None:
     )
     print(
         "Addresses:"
-        f" input_total={input_total} unique_valid={len(addresses)}"
-        f" duplicates_skipped={duplicates_skipped}"
+        f" input_total={input_total} unique_valid={unique_valid}"
+        f" duplicates_skipped={duplicates_skipped} excluded_by_filter={excluded_by_filter}"
     )
 
     balances: dict[str, str] = {}
@@ -335,8 +388,9 @@ def main() -> None:
         },
         "address_counts": {
             "input_total": input_total,
-            "unique_valid": len(addresses),
+            "unique_valid": unique_valid,
             "duplicates_skipped": duplicates_skipped,
+            "excluded": excluded_by_filter,
             "succeeded": len(balances),
             "failed": len(failures),
         },

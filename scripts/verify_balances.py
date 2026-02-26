@@ -27,6 +27,47 @@ def load_snapshot(path: Path) -> dict[str, Any]:
     return snapshot
 
 
+def normalize_address(addr: str) -> str:
+    if not (addr.startswith("0x") or addr.startswith("0X")) or len(addr) != 42:
+        raise ValueError("must be a 20-byte hex address with 0x prefix")
+    try:
+        int(addr[2:], 16)
+    except ValueError as exc:
+        raise ValueError("contains non-hex characters") from exc
+    return "0x" + addr[2:].lower()
+
+
+def load_exclude_set(path: str) -> set[str]:
+    excluded: set[str] = set()
+    invalid_lines: list[str] = []
+
+    try:
+        with open(path, "r", encoding="utf-8") as file_handle:
+            for line_number, raw_line in enumerate(file_handle, start=1):
+                raw = raw_line.strip()
+                if not raw or raw.startswith("#"):
+                    continue
+                try:
+                    normalized = normalize_address(raw)
+                except ValueError as exc:
+                    invalid_lines.append(f"line {line_number}: {raw} ({exc})")
+                    continue
+                excluded.add(normalized)
+    except OSError as exc:
+        print(f"ERROR: failed to read --exclude-addresses-file '{path}': {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if invalid_lines:
+        print("ERROR: invalid addresses found in --exclude-addresses-file:", file=sys.stderr)
+        for line in invalid_lines[:20]:
+            print(f"  {line}", file=sys.stderr)
+        if len(invalid_lines) > 20:
+            print(f"  ... and {len(invalid_lines) - 20} more invalid lines", file=sys.stderr)
+        sys.exit(1)
+
+    return excluded
+
+
 def import_web3() -> tuple[Any, Any]:
     try:
         from web3 import Web3
@@ -70,6 +111,13 @@ def main() -> None:
         action="store_true",
         help="Allow verify even when snapshot has failed_addresses.",
     )
+    parser.add_argument(
+        "--exclude-addresses-file",
+        help=(
+            "Optional path to a text file with addresses to exclude from verification "
+            "(same format as snapshot input)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.min_balance_wei < 0:
@@ -100,6 +148,11 @@ def main() -> None:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    if args.exclude_addresses_file:
+        exclude_set = load_exclude_set(args.exclude_addresses_file)
+    else:
+        exclude_set = set()
+
     failed_addresses = snapshot.get("failed_addresses", {})
     if (
         isinstance(failed_addresses, dict)
@@ -129,10 +182,16 @@ def main() -> None:
     total = len(balances)
     checked = 0
     skipped_threshold = 0
+    skipped_excluded = 0
     mismatches: list[tuple[str, int, int]] = []
     errors: list[tuple[str, str]] = []
 
     for idx, (addr, expected_str) in enumerate(balances.items(), start=1):
+        if exclude_set and addr in exclude_set:
+            skipped_excluded += 1
+            if args.progress_every and idx % args.progress_every == 0:
+                print(f"  checked {idx}/{total} addresses...")
+            continue
         try:
             expected = int(expected_str)
         except (TypeError, ValueError):
@@ -165,6 +224,7 @@ def main() -> None:
     print(f"Total addresses in snapshot: {total}")
     print(f"Checked addresses: {checked}")
     print(f"Skipped (below threshold): {skipped_threshold}")
+    print(f"Skipped (excluded-addresses-file): {skipped_excluded}")
     print(f"Mismatches: {len(mismatches)}")
     print(f"Errors: {len(errors)}")
 

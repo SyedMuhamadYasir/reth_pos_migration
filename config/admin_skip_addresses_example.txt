@@ -1,0 +1,7 @@
+# Example admin/system addresses to skip from snapshot, migration, and verification.
+# One address per line; lines starting with "#" are ignored.
+# Use checksummed or lowercase 0x-prefixed 20-byte addresses.
+
+0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+0xcccccccccccccccccccccccccccccccccccccccc

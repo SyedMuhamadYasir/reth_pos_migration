@@ -19,6 +19,7 @@ reth_pos_migration/
     migrate_balances.py            # replay balances to new chain from admin wallet
     verify_balances.py             # verify new chain balances match snapshot
     migration_helper.py            # utility: sum/check snapshot totals
+    snapshot_stats.py              # offline analytics and report export for snapshots
 
   examples/
     addresses_example.txt          # sample addresses input format
@@ -26,6 +27,9 @@ reth_pos_migration/
 
   genesis/
     README.md                      # notes about storing old/new genesis files
+
+  config/
+    admin_skip_addresses_example.txt # example admin/system addresses to exclude
 ```
 
 ## Requirements
@@ -83,9 +87,50 @@ python scripts/verify_balances.py \
   --snapshot balances_snapshot.json
 ```
 
+### Optional: Exclude Admin/System Addresses
+
+If you have admin wallets, system contracts, or other non-user accounts that are handled separately (for example via genesis `alloc`), provide an exclude file to keep them out of snapshot, migration, and verification.
+
+Use the sample format in `config/admin_skip_addresses_example.txt` (one address per line, `#` comments allowed).
+
+Snapshot with exclusions:
+
+```bash
+python scripts/snapshot_balances.py \
+  --addresses-file examples/addresses_example.txt \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --out balances_snapshot.json \
+  --block 120000
+```
+
+Migration with exclusions:
+
+```bash
+python scripts/migrate_balances.py \
+  --snapshot balances_snapshot.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --state-file migration_state.json
+```
+
+Verification with exclusions:
+
+```bash
+python scripts/verify_balances.py \
+  --snapshot balances_snapshot.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt
+```
+
+Semantics:
+- `snapshot_balances.py` removes excluded addresses from the generated snapshot.
+- `migrate_balances.py` skips excluded addresses and reports the skipped count.
+- `verify_balances.py` skips excluded addresses and reports the skipped count.
+
+If the exclude file changes between migration runs, use `--reset-state` on `migrate_balances.py` to avoid confusion with an existing state file.
+
 ## Safety and Correctness Notes
 
 - `snapshot_balances.py` resolves and pins one exact block with `eth_getBlockByNumber`, then queries all balances against that fixed block tag.
 - RPC fetch failures are recorded in `failed_addresses` and cause a non-zero exit by default unless `--allow-partial` is explicitly used.
 - `migrate_balances.py` is resumable via a state file and uses in-flight transaction reconciliation to reduce replay risk.
 - The migration scripts never print the admin private key.
+- Addresses listed in `--exclude-addresses-file` are never migrated or verified and are treated as out-of-scope for transfer replay (for example, they should be pre-set via genesis `alloc`).

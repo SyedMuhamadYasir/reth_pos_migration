@@ -26,6 +26,47 @@ def load_snapshot(path: Path) -> dict[str, Any]:
     return data
 
 
+def normalize_address(addr: str) -> str:
+    if not (addr.startswith("0x") or addr.startswith("0X")) or len(addr) != 42:
+        raise ValueError("must be a 20-byte hex address with 0x prefix")
+    try:
+        int(addr[2:], 16)
+    except ValueError as exc:
+        raise ValueError("contains non-hex characters") from exc
+    return "0x" + addr[2:].lower()
+
+
+def load_exclude_set(path: str) -> set[str]:
+    excluded: set[str] = set()
+    invalid_lines: list[str] = []
+
+    try:
+        with open(path, "r", encoding="utf-8") as file_handle:
+            for line_number, raw_line in enumerate(file_handle, start=1):
+                raw = raw_line.strip()
+                if not raw or raw.startswith("#"):
+                    continue
+                try:
+                    normalized = normalize_address(raw)
+                except ValueError as exc:
+                    invalid_lines.append(f"line {line_number}: {raw} ({exc})")
+                    continue
+                excluded.add(normalized)
+    except OSError as exc:
+        print(f"ERROR: failed to read --exclude-addresses-file '{path}': {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if invalid_lines:
+        print("ERROR: invalid addresses found in --exclude-addresses-file:", file=sys.stderr)
+        for line in invalid_lines[:20]:
+            print(f"  {line}", file=sys.stderr)
+        if len(invalid_lines) > 20:
+            print(f"  ... and {len(invalid_lines) - 20} more invalid lines", file=sys.stderr)
+        sys.exit(1)
+
+    return excluded
+
+
 def snapshot_fingerprint(snapshot: dict[str, Any]) -> str:
     payload = {
         "source_rpc": snapshot.get("source_rpc"),
@@ -219,6 +260,13 @@ def main() -> None:
         help="Allow migration from snapshot that contains failed_addresses.",
     )
     parser.add_argument(
+        "--exclude-addresses-file",
+        help=(
+            "Optional path to a text file with addresses to exclude from migration "
+            "(same format as snapshot input)."
+        ),
+    )
+    parser.add_argument(
         "--reset-state",
         action="store_true",
         help="Ignore existing state file and start from index 0.",
@@ -269,6 +317,11 @@ def main() -> None:
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    if args.exclude_addresses_file:
+        exclude_set = load_exclude_set(args.exclude_addresses_file)
+    else:
+        exclude_set = set()
 
     failed_addresses = snapshot.get("failed_addresses", {})
     if (
@@ -372,9 +425,25 @@ def main() -> None:
     sent_count = 0
     skipped_threshold = 0
     skipped_already_funded = 0
+    skipped_excluded = 0
 
     for idx in range(next_index, total):
         addr = addresses[idx]
+        if exclude_set and addr in exclude_set:
+            skipped_excluded += 1
+            if args.progress_every and (idx + 1) % args.progress_every == 0:
+                print(f"  processed {idx + 1}/{total} addresses...")
+            if not args.dry_run:
+                state = {
+                    "snapshot_fingerprint": snap_fingerprint,
+                    "snapshot_path": str(snapshot_path.resolve()),
+                    "next_index": idx + 1,
+                    "next_nonce": nonce,
+                    "last_processed_address": addr,
+                    "last_updated": int(time.time()),
+                }
+                save_state(state_file, state)
+            continue
         try:
             expected = int(balances[addr])
         except (TypeError, ValueError):
@@ -535,6 +604,7 @@ def main() -> None:
     print(f"Sent tx count: {sent_count}")
     print(f"Skipped (below threshold): {skipped_threshold}")
     print(f"Skipped (already funded): {skipped_already_funded}")
+    print(f"Skipped (excluded-addresses-file): {skipped_excluded}")
     if args.dry_run:
         print("Dry-run complete.")
     else:
