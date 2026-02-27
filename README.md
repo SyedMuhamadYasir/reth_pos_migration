@@ -105,6 +105,43 @@ python scripts/migration_report.py \
   --tex-out stats/migration_report.tex
 ```
 
+### Reth Operational Flow (Best-Effort, High Quality)
+Use this exact flow when strict completeness is not available on your current Reth node.
+
+```bash
+# 1) Discover addresses with both heuristic methods
+python scripts/discover_addresses.py --discovery-mode heuristic --method reth-balance-changes --from-block 0 --block 0x1d7aab --out addresses_reth.txt
+python scripts/discover_addresses.py --discovery-mode heuristic --method tx-scan --from-block 0 --block 0x1d7aab --out addresses_txscan.txt
+
+# 2) Union + dedupe
+cat addresses_reth.txt addresses_txscan.txt \
+  | grep -E '^0x[0-9a-fA-F]{40}$' \
+  | tr '[:upper:]' '[:lower:]' \
+  | sort -u > addresses_union.txt
+
+# 3) Quick completeness sanity check
+wc -l addresses_reth.txt addresses_txscan.txt addresses_union.txt
+
+# 4) Snapshot from union list
+# Optional: add --exclude-addresses-file config/admin_skip_addresses_example.txt
+python scripts/snapshot_balances.py --addresses-file addresses_union.txt --out balances_snapshot.json --block 0x1d7aab
+
+# 5) Safety upgrade: dry-run migration first
+# Optional: add --exclude-addresses-file config/admin_skip_addresses_example.txt
+python scripts/migrate_balances.py --snapshot balances_snapshot.json --state-file migration_state.json --tx-log-csv logs/migration_tx_log.csv --dry-run
+
+# 6) Real migration
+# Optional: add --exclude-addresses-file config/admin_skip_addresses_example.txt
+python scripts/migrate_balances.py --snapshot balances_snapshot.json --state-file migration_state.json --tx-log-csv logs/migration_tx_log.csv
+
+# 7) Verification
+# Optional: add --exclude-addresses-file config/admin_skip_addresses_example.txt
+python scripts/verify_balances.py --snapshot balances_snapshot.json
+
+# 8) Offline migration report (CSV consistency + LaTeX)
+python scripts/migration_report.py --snapshot balances_snapshot.json --tx-log-csv logs/migration_tx_log.csv --tex-out stats/migration_report.tex
+```
+
 ---
 
 ## 🧪 Full Audited Workflow (Recommended)
