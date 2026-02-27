@@ -23,6 +23,7 @@
 - 🧷 **Fixed-block snapshots** from old chain (`snapshot_balances.py`)
 - 🚚 **Idempotent replay** of missing deltas onto new chain (`migrate_balances.py`)
 - ✅ **Deterministic verification** against snapshot (`verify_balances.py`)
+- 🧪 **Preflight safety checks** before replay (`preflight_check.py`)
 - 🔍 **Automatic address discovery** with strict/proof modes (`discover_addresses.py`)
 - 🧾 **Per-tx CSV audit logging** + offline consistency reporting (`migration_report.py`)
 - 📊 **Distribution analytics** + CSV/LaTeX exports (`snapshot_stats.py`)
@@ -75,6 +76,10 @@ python scripts/snapshot_balances.py \
 
 ### 5) Dry-run migration
 ```bash
+python scripts/preflight_check.py \
+  --snapshot balances_snapshot.json \
+  --state-file migration_state.json
+
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
   --state-file migration_state.json \
@@ -208,7 +213,14 @@ python scripts/migration_helper.py balances_snapshot.json
 - fund admin wallet in genesis `alloc`
 - boot new chain and confirm `TARGET_RPC_URL` is reachable
 
-### Step 4: Replay Balances
+### Step 4: Preflight Checks (Recommended)
+```bash
+python scripts/preflight_check.py \
+  --snapshot balances_snapshot.json \
+  --state-file migration_state.json
+```
+
+### Step 5: Replay Balances
 Dry run first:
 ```bash
 python scripts/migrate_balances.py \
@@ -234,7 +246,7 @@ Replay behavior:
   - `--max-balance-wei`
 - if either scope gate is set, migration intentionally becomes a partial-scope run
 
-### Step 5: Verify
+### Step 6: Verify
 ```bash
 python scripts/verify_balances.py \
   --snapshot balances_snapshot.json
@@ -248,7 +260,7 @@ Verification supports the same scope gates:
 > For full-scope verification, do not set `--min-balance-wei` or `--max-balance-wei`.
 > If you do set them, the report is valid only for the selected scope.
 
-### Step 6: Analytics + Paper Artifacts
+### Step 7: Analytics + Paper Artifacts
 Snapshot distribution stats:
 ```bash
 python scripts/snapshot_stats.py \
@@ -336,6 +348,7 @@ You can include them in your paper:
 |---|---|---|
 | `scripts/discover_addresses.py` | Discover candidate EOAs, strict proofs/provenance | Online (RPC) |
 | `scripts/snapshot_balances.py` | Fixed-block snapshot to `balances_snapshot.json` | Online (RPC) |
+| `scripts/preflight_check.py` | Preflight validation of env/RPC/snapshot/state consistency | Mixed (RPC + local files) |
 | `scripts/migrate_balances.py` | Idempotent replay to new chain + optional tx CSV log | Online (RPC) |
 | `scripts/verify_balances.py` | Compare new chain balances to snapshot | Online (RPC) |
 | `scripts/snapshot_stats.py` | Distribution analytics + CSV/LaTeX | Offline |
@@ -354,6 +367,7 @@ reth_pos_migration/
   scripts/
     discover_addresses.py
     snapshot_balances.py
+    preflight_check.py
     migrate_balances.py
     verify_balances.py
     snapshot_stats.py

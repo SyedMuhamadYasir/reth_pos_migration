@@ -100,6 +100,43 @@ def snapshot_fingerprint(snapshot: dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def compute_run_config_fingerprint(
+    snapshot_path: Path,
+    exclude_addresses_file: str | None,
+    min_balance_wei: int,
+    max_balance_wei: int | None,
+) -> tuple[str, str | None, str | None]:
+    exclude_path_resolved: str | None = None
+    exclude_file_sha256: str | None = None
+    if exclude_addresses_file:
+        exclude_path = Path(exclude_addresses_file)
+        exclude_path_resolved = str(exclude_path.resolve())
+        try:
+            exclude_file_sha256 = file_sha256(exclude_path)
+        except OSError as exc:
+            raise RuntimeError(
+                f"Could not hash --exclude-addresses-file '{exclude_addresses_file}': {exc}"
+            ) from exc
+
+    payload = {
+        "snapshot_path": str(snapshot_path.resolve()),
+        "exclude_addresses_file": exclude_path_resolved,
+        "exclude_addresses_file_sha256": exclude_file_sha256,
+        "min_balance_wei": min_balance_wei,
+        "max_balance_wei": max_balance_wei,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest(), exclude_path_resolved, exclude_file_sha256
+
+
 def load_state(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -404,6 +441,20 @@ def main() -> None:
         sys.exit(1)
 
     snap_fingerprint = snapshot_fingerprint(snapshot)
+    try:
+        (
+            run_config_fingerprint,
+            exclude_path_resolved,
+            exclude_file_sha256,
+        ) = compute_run_config_fingerprint(
+            snapshot_path,
+            args.exclude_addresses_file,
+            args.min_balance_wei,
+            args.max_balance_wei,
+        )
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     w3 = Web3(Web3.HTTPProvider(target_rpc))
     w3.middleware_onion.inject(geth_poa_middleware, layer=0)
@@ -438,6 +489,21 @@ def main() -> None:
             print(
                 "ERROR: Existing state file belongs to a different snapshot. "
                 "Use --reset-state to start over.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        state_run_config_fingerprint = state.get("run_config_fingerprint")
+        if not state_run_config_fingerprint:
+            print(
+                "ERROR: Existing state file does not include run_config_fingerprint "
+                "(older format). Use --reset-state to start over safely.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if state_run_config_fingerprint != run_config_fingerprint:
+            print(
+                "ERROR: Existing state file run configuration does not match current "
+                "(snapshot/exclude/min/max changed). Use --reset-state to start over.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -482,6 +548,31 @@ def main() -> None:
     if args.dry_run:
         print("Dry-run mode enabled: no transactions will be sent and state will not be updated.")
 
+    def build_state_record(
+        *,
+        next_index_value: int,
+        next_nonce_value: int,
+        last_processed_address: str | None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        state_record: dict[str, Any] = {
+            "snapshot_fingerprint": snap_fingerprint,
+            "snapshot_path": str(snapshot_path.resolve()),
+            "run_config_fingerprint": run_config_fingerprint,
+            "exclude_addresses_file": exclude_path_resolved,
+            "exclude_addresses_file_sha256": exclude_file_sha256,
+            "min_balance_wei": args.min_balance_wei,
+            "max_balance_wei": args.max_balance_wei,
+            "next_index": next_index_value,
+            "next_nonce": next_nonce_value,
+            "last_updated": int(time.time()),
+        }
+        if last_processed_address is not None:
+            state_record["last_processed_address"] = last_processed_address
+        if extra_fields:
+            state_record.update(extra_fields)
+        return state_record
+
     sent_count = 0
     skipped_threshold = 0
     skipped_above_max = 0
@@ -495,14 +586,11 @@ def main() -> None:
             if args.progress_every and (idx + 1) % args.progress_every == 0:
                 print(f"  processed {idx + 1}/{total} addresses...")
             if not args.dry_run:
-                state = {
-                    "snapshot_fingerprint": snap_fingerprint,
-                    "snapshot_path": str(snapshot_path.resolve()),
-                    "next_index": idx + 1,
-                    "next_nonce": nonce,
-                    "last_processed_address": addr,
-                    "last_updated": int(time.time()),
-                }
+                state = build_state_record(
+                    next_index_value=idx + 1,
+                    next_nonce_value=nonce,
+                    last_processed_address=addr,
+                )
                 save_state(state_file, state)
             continue
         try:
@@ -525,14 +613,11 @@ def main() -> None:
             if args.progress_every and (idx + 1) % args.progress_every == 0:
                 print(f"  processed {idx + 1}/{total} addresses...")
             if not args.dry_run:
-                state = {
-                    "snapshot_fingerprint": snap_fingerprint,
-                    "snapshot_path": str(snapshot_path.resolve()),
-                    "next_index": idx + 1,
-                    "next_nonce": nonce,
-                    "last_processed_address": addr,
-                    "last_updated": int(time.time()),
-                }
+                state = build_state_record(
+                    next_index_value=idx + 1,
+                    next_nonce_value=nonce,
+                    last_processed_address=addr,
+                )
                 save_state(state_file, state)
             continue
 
@@ -541,14 +626,11 @@ def main() -> None:
             if args.progress_every and (idx + 1) % args.progress_every == 0:
                 print(f"  processed {idx + 1}/{total} addresses...")
             if not args.dry_run:
-                state = {
-                    "snapshot_fingerprint": snap_fingerprint,
-                    "snapshot_path": str(snapshot_path.resolve()),
-                    "next_index": idx + 1,
-                    "next_nonce": nonce,
-                    "last_processed_address": addr,
-                    "last_updated": int(time.time()),
-                }
+                state = build_state_record(
+                    next_index_value=idx + 1,
+                    next_nonce_value=nonce,
+                    last_processed_address=addr,
+                )
                 save_state(state_file, state)
             continue
 
@@ -559,14 +641,11 @@ def main() -> None:
             if args.progress_every and (idx + 1) % args.progress_every == 0:
                 print(f"  processed {idx + 1}/{total} addresses...")
             if not args.dry_run:
-                state = {
-                    "snapshot_fingerprint": snap_fingerprint,
-                    "snapshot_path": str(snapshot_path.resolve()),
-                    "next_index": idx + 1,
-                    "next_nonce": nonce,
-                    "last_processed_address": addr,
-                    "last_updated": int(time.time()),
-                }
+                state = build_state_record(
+                    next_index_value=idx + 1,
+                    next_nonce_value=nonce,
+                    last_processed_address=addr,
+                )
                 save_state(state_file, state)
             continue
 
@@ -609,22 +688,21 @@ def main() -> None:
                 print(f"  processed {idx + 1}/{total} addresses...")
             continue
 
-        state = {
-            "snapshot_fingerprint": snap_fingerprint,
-            "snapshot_path": str(snapshot_path.resolve()),
-            "next_index": idx,
-            "next_nonce": nonce,
-            "last_processed_address": addr,
-            "in_flight": {
-                "index": idx,
-                "address": addr,
-                "nonce": nonce,
-                "value": delta,
-                "gas_price": gas_price,
-                "started_at": int(time.time()),
+        state = build_state_record(
+            next_index_value=idx,
+            next_nonce_value=nonce,
+            last_processed_address=addr,
+            extra_fields={
+                "in_flight": {
+                    "index": idx,
+                    "address": addr,
+                    "nonce": nonce,
+                    "value": delta,
+                    "gas_price": gas_price,
+                    "started_at": int(time.time()),
+                }
             },
-            "last_updated": int(time.time()),
-        }
+        )
         save_state(state_file, state)
 
         signed = admin_account.sign_transaction(tx)
@@ -690,16 +768,15 @@ def main() -> None:
 
         nonce += 1
         sent_count += 1
-        state = {
-            "snapshot_fingerprint": snap_fingerprint,
-            "snapshot_path": str(snapshot_path.resolve()),
-            "next_index": idx + 1,
-            "next_nonce": nonce,
-            "last_processed_address": addr,
-            "last_tx_hash": tx_hash_hex,
-            "last_tx_block": int(receipt.blockNumber),
-            "last_updated": int(time.time()),
-        }
+        state = build_state_record(
+            next_index_value=idx + 1,
+            next_nonce_value=nonce,
+            last_processed_address=addr,
+            extra_fields={
+                "last_tx_hash": tx_hash_hex,
+                "last_tx_block": int(receipt.blockNumber),
+            },
+        )
         save_state(state_file, state)
 
         if args.progress_every and (idx + 1) % args.progress_every == 0:
