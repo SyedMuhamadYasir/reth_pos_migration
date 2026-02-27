@@ -144,6 +144,11 @@ Strict mode adds:
 - provenance artifacts (`manifest.json`, `checksums.sha256`, address lists)
 - optional `eth_getProof` evidence (`--proof-sample-size` or `--proof-all`)
 
+> [!WARNING]
+> Strict completeness is only available if your RPC node returns real `debug_accountRange` page data.
+> If your node returns `result: null` for `debug_accountRange`, formal strict completeness is not available on that node.
+> In that case, use Step 0 heuristic discovery for operational migration, and run strict completeness on a separate audit node (commonly Geth archive + preimages).
+
 ### Step 1: Snapshot at Fixed Block
 ```bash
 python scripts/snapshot_balances.py \
@@ -190,6 +195,7 @@ Replay behavior:
 - supports lower/upper scope gates:
   - `--min-balance-wei`
   - `--max-balance-wei`
+- if either scope gate is set, migration intentionally becomes a partial-scope run
 
 ### Step 5: Verify
 ```bash
@@ -200,6 +206,10 @@ python scripts/verify_balances.py \
 Verification supports the same scope gates:
 - `--min-balance-wei`
 - `--max-balance-wei`
+
+> [!NOTE]
+> For full-scope verification, do not set `--min-balance-wei` or `--max-balance-wei`.
+> If you do set them, the report is valid only for the selected scope.
 
 ### Step 6: Analytics + Paper Artifacts
 Snapshot distribution stats:
@@ -254,6 +264,9 @@ python scripts/verify_balances.py \
   --exclude-addresses-file config/admin_skip_addresses_example.txt
 ```
 
+> [!TIP]
+> Use the same exclusion file across snapshot, migration, and verification. Mixing different exclusion sets creates audit ambiguity.
+>
 > [!TIP]
 > If you change exclusion rules between migration runs, use `--reset-state` for clean resume semantics.
 
@@ -357,7 +370,7 @@ Use `--min-balance-wei` and/or `--max-balance-wei` on both migration and verific
 <details>
 <summary><b>Proof-grade discovery claims</b></summary>
 
-Use strict mode with `--prove-preimages`, persist provenance bundle, and optionally collect `eth_getProof` artifacts (`--proof-sample-size` or `--proof-all`).
+Use strict mode with `--prove-preimages`, persist provenance bundle, and optionally collect `eth_getProof` artifacts (`--proof-sample-size` or `--proof-all`). This requires `debug_accountRange` to return real page data (not `null`).
 </details>
 
 ---
