@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import sys
 from decimal import Decimal
@@ -210,6 +211,17 @@ def format_eth_from_wei(wei: int, places: int = 6) -> str:
     return f"{eth:.{places}f}"
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        fail(f"Could not hash file '{path}': {exc}")
+    return digest.hexdigest()
+
+
 def latex_escape(value: str) -> str:
     escaped = value
     escaped = escaped.replace("\\", r"\textbackslash{}")
@@ -230,6 +242,8 @@ def write_latex_fragment(
     *,
     snapshot_block_number: str,
     snapshot_chain_id: str,
+    snapshot_sha256: str,
+    tx_log_sha256: str,
     total_tx_count: int,
     unique_recipient_addresses: int,
     total_delta_wei: int,
@@ -242,6 +256,8 @@ def write_latex_fragment(
         "",
         f"\\newcommand{{\\MigrationSnapshotBlockNumber}}{{{latex_escape(snapshot_block_number)}}}",
         f"\\newcommand{{\\MigrationSnapshotChainId}}{{{latex_escape(snapshot_chain_id)}}}",
+        f"\\newcommand{{\\MigrationSnapshotSha256}}{{{latex_escape(snapshot_sha256)}}}",
+        f"\\newcommand{{\\MigrationTxLogSha256}}{{{latex_escape(tx_log_sha256)}}}",
         f"\\newcommand{{\\MigrationTotalTxCount}}{{{total_tx_count}}}",
         f"\\newcommand{{\\MigrationUniqueAddresses}}{{{unique_recipient_addresses}}}",
         f"\\newcommand{{\\MigrationTotalDeltaETH}}{{{latex_escape(total_delta_eth)}}}",
@@ -258,6 +274,8 @@ def write_latex_fragment(
         f"    Total delta (ETH) & {latex_escape(total_delta_eth)} \\\\",
         f"    Snapshot block & {latex_escape(snapshot_block_number)} \\\\",
         f"    Snapshot chain ID & {latex_escape(snapshot_chain_id)} \\\\",
+        f"    Snapshot SHA256 & {latex_escape(snapshot_sha256)} \\\\",
+        f"    Tx log SHA256 & {latex_escape(tx_log_sha256)} \\\\",
         "    \\hline",
         "  \\end{tabular}",
         "\\end{table}",
@@ -276,6 +294,8 @@ def main() -> None:
 
     snapshot_path = Path(args.snapshot)
     tx_log_csv_path = Path(args.tx_log_csv)
+    snapshot_sha256 = sha256_file(snapshot_path)
+    tx_log_sha256 = sha256_file(tx_log_csv_path)
 
     snapshot = load_snapshot(snapshot_path)
     snapshot_balances = parse_snapshot_balances(snapshot["balances"])
@@ -312,6 +332,8 @@ def main() -> None:
     print(f"snapshot_block_number: {expected_meta['snapshot_block_number']}")
     print(f"snapshot_block_hash: {expected_meta['snapshot_block_hash']}")
     print(f"snapshot_chain_id: {expected_meta['snapshot_chain_id']}")
+    print(f"snapshot_sha256: {snapshot_sha256}")
+    print(f"tx_log_sha256: {tx_log_sha256}")
     print(f"total_snapshot_addresses: {total_snapshot_addresses}")
     print(f"total_migrated_tx_rows: {total_migrated_tx_rows}")
     print(f"unique_addresses_in_tx_log: {unique_addresses_in_tx_log}")
@@ -351,6 +373,8 @@ def main() -> None:
             tex_path,
             snapshot_block_number=expected_meta["snapshot_block_number"],
             snapshot_chain_id=expected_meta["snapshot_chain_id"],
+            snapshot_sha256=snapshot_sha256,
+            tx_log_sha256=tx_log_sha256,
             total_tx_count=total_migrated_tx_rows,
             unique_recipient_addresses=unique_addresses_in_tx_log,
             total_delta_wei=total_delta_wei,

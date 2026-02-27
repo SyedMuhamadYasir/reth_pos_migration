@@ -44,6 +44,7 @@ reth_pos_migration/
   .gitignore
 
   scripts/
+    discover_addresses.py          # automatic candidate-address discovery from old chain
     snapshot_balances.py           # deterministic snapshot from old chain
     migrate_balances.py            # replay balances to new chain from admin wallet
     verify_balances.py             # verify new chain balances match snapshot
@@ -79,6 +80,44 @@ export CHAIN_ID="4567"                         # NEW chainId (decimal)
 ```
 
 ## 🚀 Quick Start
+### 0) (Optional) Auto-discover addresses on old chain
+```bash
+python scripts/discover_addresses.py \
+  --out addresses_discovered.txt \
+  --block 120000
+```
+
+Then use the generated file for snapshot:
+```bash
+python scripts/snapshot_balances.py \
+  --addresses-file addresses_discovered.txt \
+  --out balances_snapshot.json \
+  --block 120000
+```
+
+Notes:
+- Default mode tries `reth_getBalanceChangesInBlock` and falls back to tx-scan if needed.
+- It keeps EOAs only (`eth_getCode == 0x` at target block), filtering out contracts/apps.
+- By default it filters out zero-balance accounts at target block.
+- You can still apply skip filters via `--exclude-addresses-file`.
+
+For proof-oriented, full-account discovery (with preimage completeness gate + provenance bundle):
+```bash
+python scripts/discover_addresses.py \
+  --discovery-mode strict \
+  --prove-preimages \
+  --proof-sample-size 200 \
+  --block 120000 \
+  --out addresses_discovered.txt \
+  --provenance-dir stats/discovery_provenance
+```
+
+Strict mode uses `debug_accountRange` at one fixed block, fails if preimages are incomplete, records block `stateRoot`, and writes auditable artifacts (`manifest.json`, `checksums.sha256`, address snapshots, and optional `eth_getProof` evidence).
+
+`eth_getProof` options:
+- `--proof-sample-size N`: collect proofs for first `N` final addresses (deterministic sorted order).
+- `--proof-all`: collect proofs for all final addresses.
+
 ### 1) Snapshot balances from old chain
 ```bash
 python scripts/snapshot_balances.py \
@@ -200,6 +239,7 @@ python scripts/migration_report.py \
 It:
 - validates internal consistency between snapshot metadata and tx log rows
 - checks per-row invariants (`current_balance_before_wei + delta_sent_wei == expected_balance_wei`)
+- computes SHA256 chain-of-custody hashes for both snapshot JSON and tx log CSV
 - prints a concise summary to stdout
 - can emit a LaTeX fragment for paper/report workflows
 
