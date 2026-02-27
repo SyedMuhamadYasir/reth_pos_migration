@@ -1,93 +1,71 @@
 <div align="center">
 
-# 🚀 Reth PoS Balance Migration Toolkit
+<img src="https://capsule-render.vercel.app/api?type=waving&height=220&color=0:00C9A7,50:4D96FF,100:845EC2&text=Reth%20PoS%20Balance%20Migration%20Toolkit&fontSize=34&fontColor=ffffff&animation=twinkling&fontAlignY=38&desc=Migration-grade,%20auditable,%20EOA-focused%20balance%20replay&descAlignY=58" />
 
-Migration-grade tooling for moving account balances from an old Reth private chain to a new one.
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&pause=900&color=4D96FF&center=true&vCenter=true&width=780&lines=Snapshot+old+chain+balances+at+a+fixed+block.;Replay+only+missing+delta+to+the+new+chain.;Verify+exact+balance+parity.;Generate+CSV%2FLaTeX+artifacts+for+audit+and+papers.)](https://git.io/typing-svg)
+
+# 🧠✨ Reth PoS Balance Migration Toolkit
+
+**Production-focused tooling for moving balances from an old private Reth chain to a new one, with reproducible evidence and offline reporting.**
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Web3](https://img.shields.io/badge/web3-6.x-2C5BB4)
-![Mode](https://img.shields.io/badge/Mode-Offline%20Snapshot%20%2B%20Controlled%20Replay-0A7E8C)
-![Safety](https://img.shields.io/badge/Safety-Migration--Grade-success)
+![web3](https://img.shields.io/badge/web3-6.x-2C5BB4)
+![Mode](https://img.shields.io/badge/Mode-Deterministic%20Snapshot%20%2B%20Idempotent%20Replay-0A7E8C)
+![Audit](https://img.shields.io/badge/Audit-CSV%20%2B%20SHA256%20%2B%20LaTeX-16A34A)
+![Scope](https://img.shields.io/badge/Scope-EOA%20Balances%20Only-F97316)
 
 </div>
 
 > [!IMPORTANT]
-> This toolkit is designed for **balance migration only**.
-> It preserves addresses and balances, not historical transactions.
+> This repo migrates **balances only**. It does not carry transaction history, contract state migration logic, or app-level data migration.
 
-## ✨ Why This Exists
-When rebuilding a private PoS network, you often want a clean chain with a new `chainId` while preserving user balances. This repo gives you a practical, auditable workflow:
-- Snapshot balances at one fixed source block.
-- Replay balances from an admin wallet on the new chain.
-- Verify final balances match exactly.
-- Analyze distribution and concentration offline for reporting.
+## 🌈 What You Get
+- 🧷 **Fixed-block snapshots** from old chain (`snapshot_balances.py`)
+- 🚚 **Idempotent replay** of missing deltas onto new chain (`migrate_balances.py`)
+- ✅ **Deterministic verification** against snapshot (`verify_balances.py`)
+- 🔍 **Automatic address discovery** with strict/proof modes (`discover_addresses.py`)
+- 🧾 **Per-tx CSV audit logging** + offline consistency reporting (`migration_report.py`)
+- 📊 **Distribution analytics** + CSV/LaTeX exports (`snapshot_stats.py`)
 
-## 🧭 End-to-End Flow
+## 🗺️ Visual Flow
 ```mermaid
 flowchart LR
-    A["Old Reth Chain"] --> B["scripts/snapshot_balances.py"]
-    B --> C["balances_snapshot.json"]
-    C --> D["scripts/migrate_balances.py"]
-    D --> E["New Reth Chain"]
-    D --> H["migration_tx_log.csv"]
-    C --> F["scripts/verify_balances.py"]
-    C --> G["scripts/snapshot_stats.py"]
-    C --> I["scripts/migration_report.py"]
-    H --> I
+    A["Old Reth Chain"] --> B["discover_addresses.py\n(optional, auto discovery)"]
+    B --> C["snapshot_balances.py\nfixed block snapshot"]
+    C --> D["balances_snapshot.json"]
+    D --> E["migrate_balances.py\ncontrolled replay"]
+    E --> F["New Reth Chain"]
+    E --> G["migration_tx_log.csv"]
+    D --> H["verify_balances.py"]
+    D --> I["snapshot_stats.py\nCSV/LaTeX"]
+    D --> J["migration_report.py\nCSV checks + LaTeX"]
+    G --> J
 ```
 
-## 📦 Repository Layout
-```text
-reth_pos_migration/
-  README.md
-  requirements.txt
-  .gitignore
-
-  scripts/
-    discover_addresses.py          # automatic candidate-address discovery from old chain
-    snapshot_balances.py           # deterministic snapshot from old chain
-    migrate_balances.py            # replay balances to new chain from admin wallet
-    verify_balances.py             # verify new chain balances match snapshot
-    migration_report.py            # offline summary + LaTeX report from migration tx log
-    migration_helper.py            # utility: sum/check snapshot totals
-    snapshot_stats.py              # offline analytics + optional CSV/LaTeX exports
-
-  examples/
-    addresses_example.txt
-    balances_snapshot_example.json
-
-  genesis/
-    README.md                      # genesis file guidance (old/new)
-
-  config/
-    admin_skip_addresses_example.txt # sample admin/system addresses to exclude
-```
-
-## ⚙️ Requirements
-- Python `3.10+`
-- Install dependencies:
-
+## ⚡ Super Quick Start (Copy/Paste)
+### 1) Install
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 🔐 Environment Variables
+### 2) Set env vars
 ```bash
-export SOURCE_RPC_URL="http://old-node:8545"   # snapshot_balances.py
-export TARGET_RPC_URL="http://new-node:8545"   # migrate_balances.py / verify_balances.py
-export ADMIN_PRIVATE_KEY="0x..."               # admin wallet on NEW chain
-export CHAIN_ID="4567"                         # NEW chainId (decimal)
+export SOURCE_RPC_URL="http://old-node:8545"
+export TARGET_RPC_URL="http://new-node:8545"
+export ADMIN_PRIVATE_KEY="0x..."
+export CHAIN_ID="4567"
 ```
 
-## 🚀 Quick Start
-### 0) (Optional) Auto-discover addresses on old chain
+### 3) Discover addresses (optional but recommended)
 ```bash
 python scripts/discover_addresses.py \
   --out addresses_discovered.txt \
   --block 120000
 ```
 
-Then use the generated file for snapshot:
+### 4) Snapshot balances
 ```bash
 python scripts/snapshot_balances.py \
   --addresses-file addresses_discovered.txt \
@@ -95,13 +73,60 @@ python scripts/snapshot_balances.py \
   --block 120000
 ```
 
-Notes:
-- Default mode tries `reth_getBalanceChangesInBlock` and falls back to tx-scan if needed.
-- It keeps EOAs only (`eth_getCode == 0x` at target block), filtering out contracts/apps.
-- By default it filters out zero-balance accounts at target block.
-- You can still apply skip filters via `--exclude-addresses-file`.
+### 5) Dry-run migration
+```bash
+python scripts/migrate_balances.py \
+  --snapshot balances_snapshot.json \
+  --state-file migration_state.json \
+  --tx-log-csv logs/migration_tx_log.csv \
+  --dry-run
+```
 
-For proof-oriented, full-account discovery (with preimage completeness gate + provenance bundle):
+### 6) Real migration
+```bash
+python scripts/migrate_balances.py \
+  --snapshot balances_snapshot.json \
+  --state-file migration_state.json \
+  --tx-log-csv logs/migration_tx_log.csv
+```
+
+### 7) Verify + offline reports
+```bash
+python scripts/verify_balances.py --snapshot balances_snapshot.json
+
+python scripts/snapshot_stats.py \
+  --snapshot balances_snapshot.json \
+  --csv-out stats/threshold_stats.csv \
+  --tex-out stats/snapshot_stats.tex
+
+python scripts/migration_report.py \
+  --snapshot balances_snapshot.json \
+  --tx-log-csv logs/migration_tx_log.csv \
+  --tex-out stats/migration_report.tex
+```
+
+---
+
+## 🧪 Full Audited Workflow (Recommended)
+
+### Step 0: Address Discovery (Heuristic Mode)
+```bash
+python scripts/discover_addresses.py \
+  --out addresses_discovered.txt \
+  --block 120000 \
+  --from-block 0
+```
+
+What it does:
+- tries `reth_getBalanceChangesInBlock` first
+- falls back to tx-scan if unsupported
+- normalizes addresses
+- filters to **EOAs only** (`eth_getCode == 0x`)
+- filters zero-balance addresses (unless `--include-zero-balances`)
+
+### Step 0B: Strict Discovery + Proof Gate
+Use this when you need stronger provenance and supervisor-facing evidence.
+
 ```bash
 python scripts/discover_addresses.py \
   --discovery-mode strict \
@@ -112,123 +137,82 @@ python scripts/discover_addresses.py \
   --provenance-dir stats/discovery_provenance
 ```
 
-Strict mode uses `debug_accountRange` at one fixed block, fails if preimages are incomplete, records block `stateRoot`, and writes auditable artifacts (`manifest.json`, `checksums.sha256`, address snapshots, and optional `eth_getProof` evidence).
+Strict mode adds:
+- `debug_accountRange` based discovery at one fixed block
+- preimage completeness audit (fail hard on incomplete preimages)
+- block metadata including `stateRoot`
+- provenance artifacts (`manifest.json`, `checksums.sha256`, address lists)
+- optional `eth_getProof` evidence (`--proof-sample-size` or `--proof-all`)
 
-`eth_getProof` options:
-- `--proof-sample-size N`: collect proofs for first `N` final addresses (deterministic sorted order).
-- `--proof-all`: collect proofs for all final addresses.
-
-### 1) Snapshot balances from old chain
+### Step 1: Snapshot at Fixed Block
 ```bash
 python scripts/snapshot_balances.py \
-  --addresses-file examples/addresses_example.txt \
+  --addresses-file addresses_discovered.txt \
   --out balances_snapshot.json \
   --block 120000
 ```
 
-If `--block` is omitted, the script resolves one fixed block from fallback tags (`finalized,safe,latest`) and still snapshots consistently at that pinned block.
+Tips:
+- If `--block` is omitted, it resolves one fixed block via fallback tags (`finalized,safe,latest`)
+- default behavior fails on snapshot RPC failures unless you explicitly pass `--allow-partial`
 
-### 2) Prepare and start new chain
-- Build `genesis_new.json` with your new `chainId`.
-- Fund migration admin account in genesis `alloc`.
-- Start execution/consensus nodes and validate RPC health.
+### Step 2: (Optional) Sum Required Funding
+```bash
+python scripts/migration_helper.py balances_snapshot.json
+```
 
-### 3) Replay balances (dry-run first)
+### Step 3: Prepare New Chain
+- Create `genesis_new.json` with your new `chainId`
+- fund admin wallet in genesis `alloc`
+- boot new chain and confirm `TARGET_RPC_URL` is reachable
+
+### Step 4: Replay Balances
+Dry run first:
 ```bash
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
+  --state-file migration_state.json \
   --tx-log-csv logs/migration_tx_log.csv \
   --dry-run
+```
 
+Then execute:
+```bash
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
   --state-file migration_state.json \
   --tx-log-csv logs/migration_tx_log.csv
 ```
 
-### 4) Verify migrated balances
+Replay behavior:
+- sends only missing `delta = expected - current`
+- resumable via state file
+- supports lower/upper scope gates:
+  - `--min-balance-wei`
+  - `--max-balance-wei`
+
+### Step 5: Verify
 ```bash
 python scripts/verify_balances.py \
   --snapshot balances_snapshot.json
 ```
 
-## 🧾 Migration Audit Logging
-Use `--tx-log-csv` with `migrate_balances.py` to append a machine-readable per-transaction audit trail.
+Verification supports the same scope gates:
+- `--min-balance-wei`
+- `--max-balance-wei`
 
-Each row captures snapshot metadata and tx execution details, including recipient address, expected/current balances, delta sent, nonce, tx hash, tx block number, gas fields, and status.
-
-Example:
-```bash
-python scripts/migrate_balances.py \
-  --snapshot balances_snapshot.json \
-  --state-file migration_state.json \
-  --tx-log-csv logs/migration_tx_log.csv
-```
-
-The CSV is append-safe for resumable runs: existing files are reused, and header duplication is avoided.
-
-## 🛡️ Exclude Admin/System Addresses
-Use `--exclude-addresses-file` when certain addresses are out-of-scope for replay (for example: admin reserves, system contracts, genesis-funded alloc buckets).
-
-Address file format:
-- one address per line
-- `#` comment lines ignored
-- blank lines ignored
-- address must be valid `0x` 20-byte hex
-
-Sample file: `config/admin_skip_addresses_example.txt`
-
-Snapshot with exclusions:
-```bash
-python scripts/snapshot_balances.py \
-  --addresses-file examples/addresses_example.txt \
-  --exclude-addresses-file config/admin_skip_addresses_example.txt \
-  --out balances_snapshot.json \
-  --block 120000
-```
-
-Migration with exclusions:
-```bash
-python scripts/migrate_balances.py \
-  --snapshot balances_snapshot.json \
-  --exclude-addresses-file config/admin_skip_addresses_example.txt \
-  --state-file migration_state.json
-```
-
-Verification with exclusions:
-```bash
-python scripts/verify_balances.py \
-  --snapshot balances_snapshot.json \
-  --exclude-addresses-file config/admin_skip_addresses_example.txt
-```
-
-Semantics:
-- `snapshot_balances.py`: excluded addresses are removed from output snapshot and counted in `address_counts.excluded`.
-- `migrate_balances.py`: excluded addresses are skipped (no tx sent), counted in summary.
-- `verify_balances.py`: excluded addresses are skipped in validation, counted in summary.
-
-> [!TIP]
-> If you change the exclude file between migration runs, use `--reset-state` in `migrate_balances.py`.
-
-## 📊 Offline Analytics and Reporting
-`snapshot_stats.py` is fully offline and never talks to RPC:
-
+### Step 6: Analytics + Paper Artifacts
+Snapshot distribution stats:
 ```bash
 python scripts/snapshot_stats.py \
   --snapshot balances_snapshot.json \
-  --thresholds 1,10,100,1000 \
+  --thresholds 1,10,100,1000,100000 \
+  --less-than-eth 200000 \
   --csv-out stats/threshold_stats.csv \
   --tex-out stats/snapshot_stats.tex
 ```
 
-Outputs:
-- human-readable stdout report
-- optional threshold CSV (`--csv-out`)
-- optional LaTeX fragment for papers (`--tex-out`, via `\input{...}`)
-
-## 📝 Migration Report Generator
-`migration_report.py` is an offline consistency and reporting tool for the migration phase.
-
+Migration report (offline consistency + chain-of-custody hashes):
 ```bash
 python scripts/migration_report.py \
   --snapshot balances_snapshot.json \
@@ -236,22 +220,152 @@ python scripts/migration_report.py \
   --tex-out stats/migration_report.tex
 ```
 
-It:
-- validates internal consistency between snapshot metadata and tx log rows
-- checks per-row invariants (`current_balance_before_wei + delta_sent_wei == expected_balance_wei`)
-- computes SHA256 chain-of-custody hashes for both snapshot JSON and tx log CSV
-- prints a concise summary to stdout
-- can emit a LaTeX fragment for paper/report workflows
+---
 
-## ✅ Safety and Correctness Notes
-- Snapshot uses a fixed resolved block (`eth_getBlockByNumber`) to avoid moving-head inconsistency.
-- RPC failures are recorded in `failed_addresses`; default behavior is non-zero exit unless `--allow-partial`.
-- Migration is resumable with state tracking and in-flight reconciliation.
-- Admin private key is never printed.
-- Excluded addresses are never migrated/verified and should be handled separately (for example via genesis `alloc`).
+## 🛡️ Excluding Admin/System Addresses
+Use a shared skip file (example: `config/admin_skip_addresses_example.txt`) to keep out addresses handled separately by genesis `alloc`.
 
-## 🧪 Utility Command
-Quickly compute total required balance from snapshot:
+Address file format:
+- one address per line
+- `#` lines ignored
+- blank lines ignored
+- valid 20-byte `0x` address required
+
+Snapshot:
 ```bash
-python scripts/migration_helper.py balances_snapshot.json
+python scripts/snapshot_balances.py \
+  --addresses-file addresses_discovered.txt \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --out balances_snapshot.json \
+  --block 120000
 ```
+
+Migration:
+```bash
+python scripts/migrate_balances.py \
+  --snapshot balances_snapshot.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt
+```
+
+Verification:
+```bash
+python scripts/verify_balances.py \
+  --snapshot balances_snapshot.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt
+```
+
+> [!TIP]
+> If you change exclusion rules between migration runs, use `--reset-state` for clean resume semantics.
+
+---
+
+## 🧾 CSV + LaTeX Audit Outputs
+
+### Migration Tx CSV (`--tx-log-csv`)
+Each confirmed tx row includes:
+- snapshot block number/tag/hash
+- snapshot chain ID
+- address + expected balance + current before + delta sent
+- admin nonce/address
+- tx hash + tx block number + gas fields + tx status
+
+### LaTeX Fragments
+- `snapshot_stats.py --tex-out ...` emits macros + threshold table
+- `migration_report.py --tex-out ...` emits macros + summary table
+
+You can include them in your paper:
+```latex
+\input{stats/snapshot_stats.tex}
+\input{stats/migration_report.tex}
+```
+
+---
+
+## 🧰 Script Cheat Sheet
+| Script | Purpose | Online/Offline |
+|---|---|---|
+| `scripts/discover_addresses.py` | Discover candidate EOAs, strict proofs/provenance | Online (RPC) |
+| `scripts/snapshot_balances.py` | Fixed-block snapshot to `balances_snapshot.json` | Online (RPC) |
+| `scripts/migrate_balances.py` | Idempotent replay to new chain + optional tx CSV log | Online (RPC) |
+| `scripts/verify_balances.py` | Compare new chain balances to snapshot | Online (RPC) |
+| `scripts/snapshot_stats.py` | Distribution analytics + CSV/LaTeX | Offline |
+| `scripts/migration_report.py` | Snapshot+txlog consistency checks + LaTeX | Offline |
+| `scripts/migration_helper.py` | Quick balance sum utility | Offline |
+
+---
+
+## 📁 Repository Layout
+```text
+reth_pos_migration/
+  README.md
+  requirements.txt
+  .gitignore
+
+  scripts/
+    discover_addresses.py
+    snapshot_balances.py
+    migrate_balances.py
+    verify_balances.py
+    snapshot_stats.py
+    migration_report.py
+    migration_helper.py
+
+  examples/
+    addresses_example.txt
+    balances_snapshot_example.json
+
+  config/
+    admin_skip_addresses_example.txt
+
+  genesis/
+    README.md
+```
+
+---
+
+## ✅ Safety Checklist Before Real Migration
+- [ ] `CHAIN_ID` env matches target network chain ID
+- [ ] admin wallet has enough balance for transfer value + gas
+- [ ] snapshot block is fixed and documented
+- [ ] exclusion file reviewed and intentional
+- [ ] dry-run output looks sane
+- [ ] tx CSV logging enabled (`--tx-log-csv`)
+- [ ] post-run verification completed
+- [ ] offline reports generated and archived
+
+---
+
+## 🧯 Troubleshooting
+<details>
+<summary><b>Snapshot fails on some addresses</b></summary>
+
+Use a clean, validated address list and stable source RPC. Default behavior exits non-zero if any address fails. Use `--allow-partial` only when intentional.
+</details>
+
+<details>
+<summary><b>Migration stopped mid-run</b></summary>
+
+Re-run with the same snapshot and state file. The script resumes safely and reconciles in-flight tx when possible.
+</details>
+
+<details>
+<summary><b>Need to limit migration scope</b></summary>
+
+Use `--min-balance-wei` and/or `--max-balance-wei` on both migration and verification scripts.
+</details>
+
+<details>
+<summary><b>Proof-grade discovery claims</b></summary>
+
+Use strict mode with `--prove-preimages`, persist provenance bundle, and optionally collect `eth_getProof` artifacts (`--proof-sample-size` or `--proof-all`).
+</details>
+
+---
+
+<div align="center">
+
+### 💖 Built for high-stakes private chain migrations
+
+If you want, the next upgrade can be a one-command orchestrator (`make migrate-audit`) that runs discovery → snapshot → migrate → verify → reports end-to-end.
+
+</div>
