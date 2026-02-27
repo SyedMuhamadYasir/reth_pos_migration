@@ -78,11 +78,16 @@ python scripts/snapshot_balances.py \
 ```bash
 python scripts/preflight_check.py \
   --snapshot balances_snapshot.json \
-  --state-file migration_state.json
+  --state-file migration_state.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --min-balance-wei 0 \
+  --max-balance-wei 200000000000000000000000
 
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
   --state-file migration_state.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --max-balance-wei 200000000000000000000000 \
   --tx-log-csv logs/migration_tx_log.csv \
   --dry-run
 ```
@@ -92,6 +97,8 @@ python scripts/migrate_balances.py \
 python scripts/migrate_balances.py \
   --snapshot balances_snapshot.json \
   --state-file migration_state.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --max-balance-wei 200000000000000000000000 \
   --tx-log-csv logs/migration_tx_log.csv
 ```
 
@@ -133,6 +140,8 @@ python scripts/snapshot_balances.py --addresses-file addresses_union.txt --out b
 
 # 5) Safety upgrade: dry-run migration first
 # Optional: add --exclude-addresses-file config/admin_skip_addresses_example.txt
+# Optional: add --min-balance-wei / --max-balance-wei (must match preflight and verify)
+python scripts/preflight_check.py --snapshot balances_snapshot.json --state-file migration_state.json
 python scripts/migrate_balances.py --snapshot balances_snapshot.json --state-file migration_state.json --tx-log-csv logs/migration_tx_log.csv --dry-run
 
 # 6) Real migration
@@ -217,8 +226,21 @@ python scripts/migration_helper.py balances_snapshot.json
 ```bash
 python scripts/preflight_check.py \
   --snapshot balances_snapshot.json \
-  --state-file migration_state.json
+  --state-file migration_state.json \
+  --exclude-addresses-file config/admin_skip_addresses_example.txt \
+  --min-balance-wei 0 \
+  --max-balance-wei 200000000000000000000000
 ```
+
+What preflight checks now enforce:
+- required env vars are present (`TARGET_RPC_URL`, `ADMIN_PRIVATE_KEY`, `CHAIN_ID`; plus `SOURCE_RPC_URL` if probing source RPC)
+- target/source RPC method probes succeed (`rpc_modules`, `eth_*`, `reth_getBalanceChangesInBlock`, `debug_accountRange`)
+- snapshot has valid structure and fails if `failed_addresses` exist (unless `--allow-failed-snapshot`)
+- state-file consistency with current run config (snapshot path, exclude file hash, min/max scope)
+
+> [!IMPORTANT]
+> `migrate_balances.py` now persists a run-config fingerprint in the state file.
+> If you change snapshot path, exclusion file, or min/max scope, resume is blocked and you must use `--reset-state`.
 
 ### Step 5: Replay Balances
 Dry run first:
@@ -245,6 +267,7 @@ Replay behavior:
   - `--min-balance-wei`
   - `--max-balance-wei`
 - if either scope gate is set, migration intentionally becomes a partial-scope run
+- state resume is guarded by run-config fingerprint (snapshot + exclude file + min/max)
 
 ### Step 6: Verify
 ```bash
