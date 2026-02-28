@@ -10,6 +10,7 @@ env/
 # editor / IDE junk
 .idea/
 .vscode/
+.DS_Store
 
 # migration runtime artifacts
 migration_state.json

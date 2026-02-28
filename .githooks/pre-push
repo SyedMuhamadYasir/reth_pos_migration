@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
+EXPECTED_REMOTE_NAME="origin"
+EXPECTED_REMOTE_URL="https://github.com/SyedMuhamadYasir/reth_pos_migration.git"
+ALLOWED_BRANCH="main"
+
+error() {
+  echo "[pre-push guard] ERROR: $*" >&2
+  exit 1
+}
+
+if [ "$REMOTE_NAME" != "$EXPECTED_REMOTE_NAME" ]; then
+  error "Push blocked: remote name '$REMOTE_NAME' is not '$EXPECTED_REMOTE_NAME'."
+fi
+
+if [ "$REMOTE_URL" != "$EXPECTED_REMOTE_URL" ]; then
+  error "Push blocked: remote URL '$REMOTE_URL' does not match expected '$EXPECTED_REMOTE_URL'."
+fi
+
+# Validate every branch update being pushed.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Deletions have all-zero local sha; disallow deleting remote refs from this repo.
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    error "Push blocked: deleting remote refs is disabled."
+  fi
+
+  case "$remote_ref" in
+    refs/heads/*)
+      remote_branch="${remote_ref#refs/heads/}"
+      if [ "$remote_branch" != "$ALLOWED_BRANCH" ]; then
+        error "Push blocked: only '$ALLOWED_BRANCH' branch pushes are allowed (got '$remote_branch')."
+      fi
+      ;;
+    refs/tags/*)
+      # Allow tags.
+      ;;
+    *)
+      error "Push blocked: unsupported ref target '$remote_ref'."
+      ;;
+  esac
+
+done
+
+# Ensure local main is not behind tracked origin/main.
+if git rev-parse --verify --quiet "refs/remotes/origin/$ALLOWED_BRANCH" >/dev/null; then
+  counts="$(git rev-list --left-right --count "$ALLOWED_BRANCH...refs/remotes/origin/$ALLOWED_BRANCH")"
+  ahead="${counts%% *}"
+  behind="${counts##* }"
+  if [ "${behind:-0}" -gt 0 ]; then
+    error "Push blocked: local '$ALLOWED_BRANCH' is behind origin/$ALLOWED_BRANCH by $behind commit(s). Run 'git pull --ff-only' first."
+  fi
+fi
+
+exit 0

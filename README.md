@@ -51,6 +51,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 1.5) Enable Git Pre-Push Guard (Recommended)
+This repo ships a strict `pre-push` hook in `.githooks/pre-push` to prevent accidental pushes to the wrong project/branch.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Guard behavior:
+- only allows pushes to `origin` URL `https://github.com/SyedMuhamadYasir/reth_pos_migration.git`
+- only allows branch pushes to `main` (tags are allowed)
+- blocks push if local `main` is behind `origin/main`
+- blocks remote ref deletions
+
 ### 2) Set env vars
 ```bash
 export SOURCE_RPC_URL="http://old-node:8545"
@@ -386,6 +399,9 @@ reth_pos_migration/
   README.md
   requirements.txt
   .gitignore
+
+  .githooks/
+    pre-push
 
   scripts/
     discover_addresses.py
